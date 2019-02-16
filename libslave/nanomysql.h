@@ -16,6 +16,7 @@
 #define __NANOMYSQL_H
 
 #include <mysql/mysql.h>
+#include "MysqlGuard.h"
 #include "nanofield.h"
 #include <stdexcept>
 #include <stdio.h>
@@ -70,20 +71,20 @@ class Connection {
 
     void connect(const mysql_conn_opts& opts)
     {
-        m_conn = ::mysql_init(NULL);
+        m_conn = mysql_guard::mysql_safe_init(NULL);
 
         if (!m_conn)
             throw std::runtime_error("Could not mysql_init()");
 
         setOptions(m_conn, opts);
 
-        if (::mysql_real_connect(m_conn
-                               , opts.mysql_host.c_str()
-                               , opts.mysql_user.c_str()
-                               , opts.mysql_pass.c_str()
-                               , opts.mysql_db.c_str()
-                               , opts.mysql_port, NULL, 0
-                                ) == NULL)
+        if (mysql_guard::mysql_safe_connect(m_conn
+                                          , opts.mysql_host.c_str()
+                                          , opts.mysql_user.c_str()
+                                          , opts.mysql_pass.c_str()
+                                          , opts.mysql_db.c_str()
+                                          , opts.mysql_port, NULL, 0
+                                           ) == NULL)
         {
             throw_error("Could not mysql_real_connect()");
         }
@@ -95,7 +96,6 @@ public:
         const unsigned int connect_timeout = opts.mysql_connect_timeout;
         const unsigned int read_timeout = opts.mysql_read_timeout;
         const unsigned int write_timeout = opts.mysql_write_timeout;
-        const unsigned int arg_off = SSL_MODE_DISABLED;
         if (connect_timeout > 0)
         {
             mysql_options(connection, MYSQL_OPT_CONNECT_TIMEOUT, &connect_timeout);
@@ -112,7 +112,7 @@ public:
         {
             mysql_options(connection, MYSQL_OPT_WRITE_TIMEOUT, &write_timeout);
         }
-/*
+
         mysql_ssl_set( connection
                      , opts.mysql_ssl_key.empty() ? nullptr : opts.mysql_ssl_key.c_str()
                      , opts.mysql_ssl_cert.empty() ? nullptr : opts.mysql_ssl_cert.c_str()
@@ -120,9 +120,8 @@ public:
                      , nullptr
                      , nullptr
                      );
-*/
-    mysql_options(connection, MYSQL_OPT_SSL_MODE, &arg_off);
     }
+
     Connection(const mysql_conn_opts& opts)
     {
         connect(opts);

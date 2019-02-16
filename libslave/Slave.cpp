@@ -14,6 +14,7 @@
 
 
 #include <algorithm>
+#include <memory>
 #include <regex>
 #include <string>
 
@@ -175,8 +176,7 @@ void Slave::createTable(RelayLogInfo& rli,
     conn.query("SHOW FULL COLUMNS FROM " + tbl_name + " IN " + db_name);
     conn.store(res);
 
-    std::shared_ptr<Table> table(new Table(db_name, tbl_name));
-
+    std::unique_ptr<Table> table(new Table(db_name, tbl_name));
 
     LOG_DEBUG(log, "Created new Table object: database:" << db_name << " table: " << tbl_name );
 
@@ -331,12 +331,12 @@ void Slave::createTable(RelayLogInfo& rli,
             throw std::runtime_error("class name does not exist: " + extract_field);
         }
 
-        table->fields.push_back(field);
+        table->fields.push_back(std::move(field));
 
     }
 
 
-    rli.setTable(tbl_name, db_name, table);
+    rli.setTable(tbl_name, db_name, std::move(table));
 
 }
 
@@ -377,7 +377,7 @@ struct raii_mysql_connector
         std::lock_guard<std::mutex> l(mutex);
         thread_id = ::pthread_self();
 
-        if (!(mysql_init(mysql))) {
+        if (!(mysql_guard::mysql_safe_init(mysql))) {
 
             throw std::runtime_error("Slave::reconnect() : mysql_init() : could not initialize mysql structure");
         }
@@ -386,7 +386,8 @@ struct raii_mysql_connector
         const auto& sConnOptions = m_master_info.conn_options;
         nanomysql::Connection::setOptions(mysql, sConnOptions);
 
-        while (mysql_real_connect(mysql,
+        using mysql_guard::mysql_safe_connect;
+        while (mysql_safe_connect(mysql,
                                   sConnOptions.mysql_host.c_str(),
                                   sConnOptions.mysql_user.c_str(),
                                   sConnOptions.mysql_pass.c_str(), 0, sConnOptions.mysql_port, 0, CLIENT_REMEMBER_OPTIONS)
@@ -407,7 +408,7 @@ struct raii_mysql_connector
         }
 
         if(was_error)
-            LOG_INFO(log, "Successfully connected to " << sConnOptions.mysql_host << ":" << m_master_info.mysql_port);
+            LOG_INFO(log, "Successfully connected to " << sConnOptions.mysql_host << ":" << sConnOptions.mysql_port);
 
 
         mysql->reconnect = 1;
@@ -419,7 +420,6 @@ struct raii_mysql_connector
     {
         std::lock_guard<std::mutex> l(mutex);
         thread_id = 0;
-        end_server(mysql);
         mysql_close(mysql);
     }
 };
@@ -462,6 +462,7 @@ connected:
     LOG_INFO(log, "Starting from binlog_pos: " << m_master_info.position);
 
     request_dump(m_master_info.position, &mysql);
+    gtid_t gtid_next;
 
     while (!_interruptFlag()) {
 
@@ -553,19 +554,8 @@ connected:
 
                 LOG_TRACE(log, "Got XID event. Using binlog pos: " << m_master_info.position);
 
-                //if (m_xid_callback)
-                //    m_xid_callback(event.server_id);
-
-            } else if (event.type == QUERY_EVENT) {
-
-                if (!gtid_next.first.empty())
-                    m_master_info.position.addGtid(gtid_next);
-                ext_state.setMasterPosition(m_master_info.position);
-
-                LOG_TRACE(log, "Got XID event. Using binlog pos: " << m_master_info.position);
-
-                //if (m_xid_callback)
-                //    m_xid_callback(event.server_id);
+                if (m_xid_callback)
+                    m_xid_callback(event.server_id);
 
             } else  if (event.type == ROTATE_EVENT) {
 
@@ -601,8 +591,6 @@ connected:
                 {
                     m_master_info.position.addGtid(gtid_next);
                     ext_state.setMasterPosition(m_master_info.position);
-                	if (m_xid_callback)
-                    	m_xid_callback(event.server_id);
                 }
                 Gtid_event_info gei(event.buf, event.event_len);
                 LOG_TRACE(log, "GTID_NEXT: sid = " << gei.m_sid << ", gno =  " << gei.m_gno);
@@ -802,7 +790,6 @@ namespace
 {
 std::string checkAlterOrCreateQuery(const std::string& str)
 {
-/*
     static const std::regex query_regex(R"(\s*(?:alter\s+table|create\s+table(?:\s+if\s+not\s+exists)?)\s+(?:`?\w+`?\.)?`?(\w+)`?(?:[^\w\.`].*$|$))",
                                         std::regex_constants::optimize | std::regex_constants::icase);
 
@@ -812,7 +799,6 @@ std::string checkAlterOrCreateQuery(const std::string& str)
     std::smatch sm;
     if (std::regex_match(s, sm, query_regex))
         return sm[1];
-*/
     return "";
 }
 }// anonymouos-namespace
@@ -851,6 +837,8 @@ int Slave::process_event(const slave::Basic_event_info& bei, RelayLogInfo& m_rli
                 {
                     it->second->m_callback = m_callbacks[key];
                     it->second->m_filter = m_filters[key];
+                    it->second->set_column_filter(m_column_filters[key]);
+                    it->second->row_type = m_row_types[key];
                 }
             }
         }
@@ -867,7 +855,7 @@ int Slave::process_event(const slave::Basic_event_info& bei, RelayLogInfo& m_rli
 
         if (m_master_version >= 50604)
         {
-            auto table = m_rli.getTable(std::make_pair(tmi.m_dbnam, tmi.m_tblnam));
+            const auto& table = m_rli.getTable(std::make_pair(tmi.m_dbnam, tmi.m_tblnam));
             if (table && tmi.m_cols_types.size() == table->fields.size())
             {
                 int i = 0;

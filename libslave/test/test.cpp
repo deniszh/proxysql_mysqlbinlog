@@ -3,6 +3,7 @@
 #include <iostream>
 #include <sstream>
 #include <signal.h>
+#include <cstddef>  // for std::nullptr_t
 
 #include "Slave.h"
 #include "DefaultExtState.h"
@@ -11,35 +12,47 @@
 volatile sig_atomic_t stop = 0;
 slave::Slave* sl = NULL;
 
-std::string print(const std::string& type, const boost::any& v) {
+std::string print(const slave::FieldValue& v) {
 
     if (v.type() == typeid(std::string)) {
 
-        std::string r = "'";
-        r += boost::any_cast<std::string>(v);
-        r += "'";
-        return r;
+        return "'" +  slave::get<std::string>(v) + "'";
 
     } else {
         std::ostringstream s;
 
-        if (v.type() == typeid(int))
-            s << boost::any_cast<int>(v);
+        if (slave::isNullFieldValue(v))
+            s << "NULL";
 
-        else if (v.type() == typeid(unsigned int))
-            s << boost::any_cast<unsigned int>(v);
+        else if (v.type() == typeid(int))
+            s << slave::get<int>(v);
 
-        else if (v.type() == typeid(double))
-            s << boost::any_cast<double>(v);
+        else if (v.type() == typeid(char))
+            s << slave::get<char>(v);
+
+        else if (v.type() == typeid(uint16_t))
+            s << slave::get<uint16_t>(v);
+
+        else if (v.type() == typeid(int32_t))
+            s << slave::get<int32_t>(v);
+
+        else if (v.type() == typeid(uint32_t))
+            s << slave::get<uint32_t>(v);
 
         else if (v.type() == typeid(unsigned long long))
-            s << boost::any_cast<unsigned long long>(v);
+            s << slave::get<unsigned long long>(v);
+
+        else if (v.type() == typeid(float))
+            s << slave::get<float>(v);
+
+        else if (v.type() == typeid(double))
+            s << slave::get<double>(v);
 
         else if (v.type() == typeid(void))
             s << "void";
 
         else
-            s << boost::any_cast<long>(v);
+            s << "unknown type";
 
         return s.str();
     }
@@ -60,26 +73,41 @@ void callback(const slave::RecordSet& event) {
 
     std::cout << " " << event.db_name << "." << event.tbl_name << "\n";
 
-    for (slave::Row::const_iterator i = event.m_row.begin(); i != event.m_row.end(); ++i) {
-
-        std::string value = print(i->second.first, i->second.second);
-
-        std::cout << "  " << i->first << " : " << i->second.first << " -> " << value;
-
-        if (event.type_event == slave::RecordSet::Update) {
-
-            slave::Row::const_iterator j = event.m_old_row.find(i->first);
-
-            std::string old_value("NULL");
-
-            if (j != event.m_old_row.end())
-                old_value = print(i->second.first, j->second.second);
-
-            if (value != old_value)
-                std::cout << "    (was: " << old_value << ")";
+    if (event.row_type == slave::RowType::Map)
+    {
+        for (const auto& i : event.m_row)
+        {
+            const auto value = print(i.second.second);
+            std::cout << "  " << i.first << " : " << i.second.first << " -> " << value;
+            if (event.type_event == slave::RecordSet::Update)
+            {
+                const auto j = event.m_old_row.find(i.first);
+                std::string old_value("NULL");
+                if (j != event.m_old_row.end())
+                    old_value = print(j->second.second);
+                if (value != old_value)
+                    std::cout << "    (was: " << old_value << ")";
+            }
+            std::cout << "\n";
         }
-
-        std::cout << "\n";
+    }
+    else
+    {
+        for (auto it = event.m_row_vec.begin(); it != event.m_row_vec.end(); ++it)
+        {
+            const auto value = print(it->second);
+            const unsigned index = it - event.m_row_vec.begin();
+            std::cout << "  " << "field#" << index << " -> " << value;
+            if (event.type_event == slave::RecordSet::Update)
+            {
+                std::string old_value("NULL");
+                if (index < event.m_old_row_vec.size())
+                    old_value = print(event.m_old_row_vec[index].second);
+                if (value != old_value)
+                    std::cout << "    (was: " << old_value << ")";
+            }
+            std::cout << "\n";
+        }
     }
 
     std::cout << "  @ts = "  << event.when << "\n"

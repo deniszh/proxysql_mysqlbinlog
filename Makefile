@@ -1,12 +1,14 @@
 .PHONY: default
 default: proxysql_binlog_reader
 
-
 ubuntu16: binaries/proxysql_binlog_reader-ubuntu16
 .PHONY: ubuntu16
 
 ubuntu14: binaries/proxysql_binlog_reader-ubuntu14
 .PHONY: ubuntu14
+
+ubuntu12: binaries/proxysql_binlog_reader-ubuntu12
+.PHONY: ubuntu12
 
 debian7: binaries/proxysql_binlog_reader-debian7
 .PHONY: debian7
@@ -22,7 +24,7 @@ libev/.libs/libev.a:
 	cd libev-4.24 && ./configure
 	cd libev && CC=${CC} CXX=${CXX} ${MAKE}
 
-libdaemon/libdaemon/.libs/libdaemon.a: 
+libdaemon/libdaemon/.libs/libdaemon.a:
 	rm -rf libdaemon-0.14 || true
 	tar -zxf libdaemon-0.14.tar.gz
 	cd libdaemon && ./configure --disable-examples
@@ -45,6 +47,15 @@ binaries/proxysql_binlog_reader-ubuntu14:
 	docker exec ubuntu14_build bash -c "cd /opt; git clone https://github.com/sysown/proxysql_mysqlbinlog.git && cd /opt/proxysql_mysqlbinlog/libslave/ && cmake . && make && cd /opt/proxysql_mysqlbinlog && make"
 	sleep 2
 	docker cp ubuntu14_build:/opt/proxysql_mysqlbinlog/proxysql_binlog_reader ./binaries/proxysql_binlog_reader-ubuntu14
+
+binaries/proxysql_binlog_reader-ubuntu12:
+	docker stop ubuntu12_build || true
+	docker rm ubuntu12_build || true
+	docker create --name ubuntu12_build deniszh/proxysql_packaging:build-ubuntu12 bash -c "while : ; do sleep 10 ; done"
+	docker start ubuntu12_build
+	docker exec ubuntu12_build bash -c "cd /opt; git clone https://github.com/sysown/proxysql_mysqlbinlog.git && cd /opt/proxysql_mysqlbinlog/libslave/ && cmake . && make && cd /opt/proxysql_mysqlbinlog && make"
+	sleep 2
+	docker cp ubuntu12_build:/opt/proxysql_mysqlbinlog/proxysql_binlog_reader ./binaries/proxysql_binlog_reader-ubuntu12
 
 binaries/proxysql_binlog_reader-debian7:
 	docker stop debian7_build || true
