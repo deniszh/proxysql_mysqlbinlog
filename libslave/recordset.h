@@ -15,37 +15,32 @@
 #ifndef __SLAVE_RECORDSET_H_
 #define __SLAVE_RECORDSET_H_
 
+#include <boost/any.hpp>
 #include <map>
 #include <string>
-
-#include "types.h"
 
 namespace slave
 {
 
 // One row in a table. Key -- field name, value - pair of (field type, value)
-typedef std::vector<std::pair<std::string, FieldValue>> RowVector;
-typedef std::map<std::string, std::pair<std::string, FieldValue>> Row;
+typedef std::map<std::string, std::pair<std::string, boost::any> > Row;
 
 struct RecordSet
 {
-    Row       m_row;
-    Row       m_old_row;
-    RowVector m_row_vec;
-    RowVector m_old_row_vec;
-    RowType   row_type = RowType::Map;
+    Row m_row, m_old_row;
 
     std::string tbl_name;
     std::string db_name;
 
     time_t when;
 
-    enum TypeEvent { Update, Delete, Write };
+    enum TypeEvent { Update, Delete, Write, PreInit, PostInit };
 
     TypeEvent type_event;
-
+	 
     // Root master ID from which this record originated
-    unsigned int master_id = 0;
+    unsigned int master_id;
+    RecordSet(): master_id(0) {}
 };
 
 }// slave

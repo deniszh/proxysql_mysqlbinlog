@@ -20,10 +20,10 @@
 #include <vector>
 #include <list>
 
-#include "collate.h"
-#include "types.h"
+#include <boost/any.hpp>
 
-// conflict with macro defined in mysql
+#include "collate.h"
+
 #ifdef test
 #undef test
 #endif /* test */
@@ -37,7 +37,7 @@ public:
     const std::string field_type;
     const std::string field_name;
 
-    FieldValue field_data;
+    boost::any field_data;
 
     virtual const char* unpack(const char *from) = 0;
 

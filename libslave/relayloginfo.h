@@ -26,7 +26,7 @@
 namespace slave {
 
 
-typedef std::unique_ptr<Table> PtrTable;
+typedef std::shared_ptr<Table> PtrTable;
 
 class RelayLogInfo {
 
@@ -49,8 +49,8 @@ public:
         m_map_table_name[table_id] = std::make_pair(db_name, table_name);
     }
 
-    const std::pair<std::string,std::string> getTableNameById(int table_id) const
-    {
+    const std::pair<std::string,std::string> getTableNameById(int table_id) {
+
         id_to_name_t::const_iterator p = m_map_table_name.find(table_id);
 
         if (p != m_map_table_name.end()) {
@@ -60,20 +60,20 @@ public:
         }
     }
 
-    const PtrTable& getTable(const std::pair<std::string, std::string>& key) const
-    {
-        static const PtrTable empty;
-        name_to_table_t::const_iterator p = m_table_map.find(key);
+    std::shared_ptr<Table> getTable(const std::pair<std::string, std::string>& key) {
+        name_to_table_t::iterator p = m_table_map.find(key);
 
-        if (p != m_table_map.end())
+        if (p != m_table_map.end()) {
             return p->second;
 
-        return empty;
+        } else {
+            return std::shared_ptr<Table>();
+        }
     }
 
-    void setTable(const std::string& table_name, const std::string& db_name, PtrTable&& table)
-    {
-        m_table_map[std::make_pair(db_name, table_name)] = std::move(table);
+    void setTable(const std::string& table_name, const std::string& db_name, PtrTable table) {
+
+        m_table_map[std::make_pair(db_name, table_name)] = table;
     }
 
 };

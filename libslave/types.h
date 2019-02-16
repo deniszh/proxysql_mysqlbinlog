@@ -5,18 +5,6 @@
 #include <string>
 #include <time.h>
 
-// conflict with macro defined in mysql
-#ifdef test
-#undef test
-#endif /* test */
-
-#ifdef SLAVE_USE_VARIANT_FOR_FIELD_VALUE
-#include <cstddef>              // for std::nullptr_t
-#include <boost/variant.hpp>
-#else
-#include <boost/any.hpp>
-#endif
-
 namespace slave {
 namespace types
 {
@@ -28,7 +16,6 @@ namespace types
     typedef uint64_t            MY_BIT;
     typedef int                 MY_ENUM;
     typedef unsigned long long  MY_SET;
-    typedef float               MY_FLOAT;
     typedef double              MY_DOUBLE;
     typedef double              MY_DECIMAL;
     typedef uint32_t            MY_DATE;
@@ -39,8 +26,6 @@ namespace types
     typedef std::string         MY_VARCHAR;
     typedef std::string         MY_TINYTEXT;
     typedef std::string         MY_TEXT;
-    typedef std::string         MY_MEDIUMTEXT;
-    typedef std::string         MY_LONGTEXT;
     typedef std::string         MY_BLOB;
 
     // NOTE you should call tzset directly or indirectly before using any of these functions
@@ -89,36 +74,6 @@ namespace types
         return mktime(&t);
     }
 }// types
-
-enum class RowType {
-    Map,
-    Vector
-};
-
-#ifdef SLAVE_USE_VARIANT_FOR_FIELD_VALUE
-    using FieldValue = boost::variant<std::nullptr_t
-                                    , int
-                                    , char
-                                    , uint16_t
-                                    , int32_t
-                                    , uint32_t
-                                    , unsigned long long
-                                    , float
-                                    , double
-                                    , std::string
-                                    >;
-    inline std::nullptr_t nullFieldValue() { return nullptr; }
-    inline bool isNullFieldValue(const FieldValue& v) { return v.type() == typeid(std::nullptr_t); }
-    template <typename T>
-    const T& get(const FieldValue& v) { return boost::get<T>(v); }
-#else
-    using FieldValue = boost::any;
-    inline boost::any nullFieldValue() { return boost::any(); }
-    inline bool isNullFieldValue(const FieldValue& v) { return v.empty(); }
-    template <typename T>
-    T get(const FieldValue& v) { return boost::any_cast<T>(v); }
-#endif
-
 }// slave
 
 #endif

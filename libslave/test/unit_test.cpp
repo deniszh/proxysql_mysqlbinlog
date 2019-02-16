@@ -10,7 +10,6 @@ using namespace boost::unit_test;
 #include <cfloat>
 #include <cmath>
 #include <condition_variable>
-#include <cstddef>  // for std::nullptr_t
 #include <fstream>
 #include <functional>
 #include <iostream>
@@ -20,14 +19,6 @@ using namespace boost::unit_test;
 #include "Slave.h"
 #include "nanomysql.h"
 #include "types.h"
-
-namespace std
-{
-    inline std::ostream& operator << (std::ostream& os, std::nullptr_t n)
-    {
-        return os << "nullptr";
-    }
-}// std
 
 namespace // anonymous
 {
@@ -130,16 +121,18 @@ namespace // anonymous
             std::mutex m_Mutex;
             std::condition_variable m_CondVariable;
 
-            slave::State getState() override { return slave::State(); }
-            void setConnecting() override {}
-            time_t getConnectTime() override { return 0; }
-            void setLastFilteredUpdateTime() override {}
-            time_t getLastFilteredUpdateTime() override { return 0; }
-            void setLastEventTimePos(time_t t, unsigned long pos) override { intransaction_pos = pos; }
-            time_t getLastUpdateTime() override { return 0; }
-            time_t getLastEventTime() override { return 0; }
-            unsigned long getIntransactionPos() override { return intransaction_pos; }
-            void setMasterPosition(const slave::Position& pos) override
+            TestExtState() : intransaction_pos(0) {}
+
+            virtual slave::State getState() { return slave::State(); }
+            virtual void setConnecting() {}
+            virtual time_t getConnectTime() { return 0; }
+            virtual void setLastFilteredUpdateTime() {}
+            virtual time_t getLastFilteredUpdateTime() { return 0; }
+            virtual void setLastEventTimePos(time_t t, unsigned long pos) { intransaction_pos = pos; }
+            virtual time_t getLastUpdateTime() { return 0; }
+            virtual time_t getLastEventTime() { return 0; }
+            virtual unsigned long getIntransactionPos() { return intransaction_pos; }
+            virtual void setMasterPosition(const slave::Position& pos)
             {
                 {
                     std::lock_guard<std::mutex> lock(m_Mutex);
@@ -148,9 +141,9 @@ namespace // anonymous
                 }
                 m_CondVariable.notify_one();
             }
-            void saveMasterPosition() override {}
-            bool loadMasterPosition(slave::Position& pos) override { pos.clear(); return false; }
-            bool getMasterPosition(slave::Position& pos) override
+            virtual void saveMasterPosition() {}
+            virtual bool loadMasterPosition(slave::Position& pos) { pos.clear(); return false; }
+            virtual bool getMasterPosition(slave::Position& pos)
             {
                 if (!position.empty())
                 {
@@ -161,15 +154,15 @@ namespace // anonymous
                 }
                 return loadMasterPosition(pos);
             }
-            unsigned int getConnectCount() override { return 0; }
-            void setStateProcessing(bool _state) override {}
-            bool getStateProcessing() override { return false; }
-            void initTableCount(const std::string& t) override {}
-            void incTableCount(const std::string& t) override {}
+            virtual unsigned int getConnectCount() { return 0; }
+            virtual void setStateProcessing(bool _state) {}
+            virtual bool getStateProcessing() { return false; }
+            virtual void initTableCount(const std::string& t) {}
+            virtual void incTableCount(const std::string& t) {}
 
         private:
             slave::Position position;
-            unsigned long   intransaction_pos = 0;
+            unsigned long   intransaction_pos;
         };
 
         class TestSlaveStat : public slave::EventStatIface
@@ -200,14 +193,14 @@ namespace // anonymous
             std::map<slave::EventKind, Counter>                           map_kind;
             std::map<std::pair<unsigned long, slave::EventKind>, Counter> map_detailed;
 
-            void processTableMap(const unsigned long id, const std::string& table, const std::string& database) override
+            virtual void processTableMap(const unsigned long id, const std::string& table, const std::string& database)
             {
                 const auto key = std::make_pair(database, table);
                 map_table[key] = id;
                 ++events_table_map;
             }
 
-            void tick(time_t when) override
+            virtual void tick(time_t when)
             {
                 ++events_total;
                 if (when != 0)
@@ -217,17 +210,17 @@ namespace // anonymous
                 }
             }
 
-            void tickFormatDescription() override { ++events_total; ++events_format_description; }
+            virtual void tickFormatDescription() { ++events_total; ++events_format_description; }
 
-            void tickQuery() override { ++events_query; }
+            virtual void tickQuery() { ++events_query; }
 
-            void tickRotate() override { ++events_total; ++events_rotate; }
+            virtual void tickRotate() { ++events_total; ++events_rotate; }
 
-            void tickXid() override { ++events_xid; }
+            virtual void tickXid() { ++events_xid; }
 
-            void tickOther() override { ++events_other; }
+            virtual void tickOther() { ++events_other; }
 
-            void tickModifyEventIgnored(const unsigned long id, slave::EventKind kind) override
+            virtual void tickModifyEventIgnored(const unsigned long id, slave::EventKind kind)
             {
                 ++events_modify;
 
@@ -236,7 +229,7 @@ namespace // anonymous
                 map_detailed[key].ignored += 1;
             }
 
-            void tickModifyEventDone(const unsigned long id, slave::EventKind kind) override
+            virtual void tickModifyEventDone(const unsigned long id, slave::EventKind kind)
             {
                 ++events_modify;
 
@@ -245,7 +238,7 @@ namespace // anonymous
                 map_detailed[key].done += 1;
             }
 
-            void tickModifyEventFailed(const unsigned long id, slave::EventKind kind) override
+            virtual void tickModifyEventFailed(const unsigned long id, slave::EventKind kind)
             {
                 ++events_modify;
 
@@ -254,7 +247,7 @@ namespace // anonymous
                 map_detailed[key].failed += 1;
             }
 
-            void tickModifyRowDone(const unsigned long id, slave::EventKind kind, uint64_t time) override
+            virtual void tickModifyRowDone(const unsigned long id, slave::EventKind kind, uint64_t time)
             {
                 ++rows_modify;
 
@@ -379,8 +372,8 @@ namespace // anonymous
             m_Slave.setMasterInfo(sMasterInfo);
             m_Slave.linkEventStat(&m_SlaveStat);
             // Set callback into Fixture - and it will call callbacks which will be set in tests.
-            m_Slave.setCallback(cfg.mysql_db, "test", std::ref(m_Callback), slave::RowType::Map, filter);
-            m_Slave.setCallback(cfg.mysql_db, "stat", std::ref(m_Callback), slave::RowType::Map, filter);
+            m_Slave.setCallback(cfg.mysql_db, "test", std::ref(m_Callback), filter);
+            m_Slave.setCallback(cfg.mysql_db, "stat", std::ref(m_Callback), filter);
             m_Slave.init();
             startSlave();
         }
@@ -399,22 +392,10 @@ namespace // anonymous
         }
 
         template<typename T>
-        struct RowValue
-        {
-            boost::optional<T> value;
-            bool isNull; // true if libslave get NULL value from binlog
-
-            RowValue(const T& value_, bool isNull_) :
-                value(value_), isNull(isNull_) {}
-
-            RowValue(bool isNull_) : isNull(isNull_) {}
-        };
-
-        template<typename T>
         struct Collector
         {
-            typedef slave::RecordSet::TypeEvent     TypeEvent;
-            typedef RowValue<T>                     Row;
+            typedef slave::RecordSet::TypeEvent TypeEvent;
+            typedef boost::optional<T> Row;
             typedef std::tuple<TypeEvent, Row, Row> Event;
             typedef std::vector<Event> EventVector;
             EventVector data;
@@ -427,21 +408,11 @@ namespace // anonymous
                     str << "Row size is " << row.size();
                     throw std::runtime_error(str.str());
                 }
-
                 const slave::Row::const_iterator it = row.find("value");
                 if (row.end() != it)
-                {
-                    // field has NULL value
-                    if (slave::isNullFieldValue(it->second.second))
-                        return Row(true);
-
-                    return Row(slave::get<T>(it->second.second), false);
-                }
+                    return boost::any_cast<T>(it->second.second);
                 else
-                {
-                    // there isn't info. about changes in field
-                    return Row(false);
-                }
+                    return Row();
             }
 
             void operator()(const slave::RecordSet& rs)
@@ -452,27 +423,18 @@ namespace // anonymous
             static void expectNothing(const Row& row, const std::string& name,
                                       const std::string& aErrorMessage)
             {
-                if (row.value || row.isNull)
-                    BOOST_ERROR("Has " << name << " image with '" << row.value.get()
+                if (row)
+                    BOOST_ERROR("Has " << name << " image with '" << row.get()
                                 << "' value, expected nothing during" << aErrorMessage);
             }
 
             static void expectValue(const T& value, const Row& row, const std::string& name,
                                     const std::string& aErrorMessage)
             {
-                if (!row.isNull && !row.value)
+                if (!row)
                     BOOST_ERROR("Has not " << name << " image, expected '" << value << "' during" << aErrorMessage);
-
-                if (typeid(std::nullptr_t) == typeid(T))
-                {
-                    if (!row.isNull)
-                        BOOST_ERROR("Has invalid " << name << " image, "
-                                                   << "expected 'NULL' during " << aErrorMessage);
-                    return;
-                }
-
-                if (not_equal(row.value.get(), value))
-                    BOOST_ERROR("Has invalid " << name << " image with '" << row.value.get() << "'"
+                if (not_equal(row.get(), value))
+                    BOOST_ERROR("Has invalid " << name << " image with '" << row.get() << "'"
                                 << "while expected '"<< value << "' during " << aErrorMessage);
             }
 
@@ -865,7 +827,6 @@ namespace // anonymous
     enum MYSQL_TYPE
     {
         MYSQL_TINYINT,
-        MYSQL_SMALLINT,
         MYSQL_INT,
         MYSQL_BIGINT,
         MYSQL_CHAR,
@@ -884,22 +845,6 @@ namespace // anonymous
 
     template <MYSQL_TYPE T>
     struct MYSQL_type_traits;
-
-    template<>
-    struct MYSQL_type_traits<MYSQL_TINYINT>
-    {
-        typedef slave::types::MY_TINYINT slave_type;
-        static const std::string name;
-    };
-    const std::string MYSQL_type_traits<MYSQL_TINYINT>::name = "TINYINT";
-
-    template<>
-    struct MYSQL_type_traits<MYSQL_SMALLINT>
-    {
-        typedef slave::types::MY_SMALLINT slave_type;
-        static const std::string name;
-    };
-    const std::string MYSQL_type_traits<MYSQL_SMALLINT>::name = "SMALLINT";
 
     template <>
     struct MYSQL_type_traits<MYSQL_INT>
@@ -1028,16 +973,6 @@ namespace // anonymous
         t.erase(0, 1);
     }
 
-    void getValue(const std::string& s, slave::types::MY_TINYINT& t)
-    {
-        std::istringstream is;
-        is.str(s);
-        // читаем как число
-        uint16_t tmp;
-        is >> tmp;
-        t = static_cast<slave::types::MY_TINYINT>(tmp);
-    }
-
     template<typename T>
     void testOneType(Fixture& fixture)
     {
@@ -1116,8 +1051,6 @@ namespace // anonymous
     void testOneFilterAllTypes(slave::EventKind filter)
     {
         Fixture f(filter);
-        testOneType<boost::mpl::int_<MYSQL_TINYINT>>(f);
-        testOneType<boost::mpl::int_<MYSQL_SMALLINT>>(f);
         testOneType<boost::mpl::int_<MYSQL_INT>>(f);
         testOneType<boost::mpl::int_<MYSQL_BIGINT>>(f);
         testOneType<boost::mpl::int_<MYSQL_CHAR>>(f);
@@ -1193,8 +1126,8 @@ namespace // anonymous
                 {
                     BOOST_CHECK_GT(   f.m_SlaveStat.map_kind[kind].done,    0);
                     BOOST_CHECK_GT(   f.m_SlaveStat.map_detailed[key].done, 0);
-                    BOOST_CHECK_GE(   f.m_SlaveStat.map_kind[kind].row_done,    0);
-                    BOOST_CHECK_GE(   f.m_SlaveStat.map_detailed[key].row_done, 0);
+                    BOOST_CHECK_GT(   f.m_SlaveStat.map_kind[kind].row_done,    0);
+                    BOOST_CHECK_GT(   f.m_SlaveStat.map_detailed[key].row_done, 0);
                 }
                 else
                 {
@@ -1374,7 +1307,7 @@ namespace // anonymous
             if (kind == slave::eInsert)
             {
                 BOOST_CHECK_EQUAL(f.m_SlaveStat.map_detailed[sKeyStat].done,     1);
-                BOOST_CHECK_GE(   f.m_SlaveStat.map_detailed[sKeyStat].row_done, 0);
+                BOOST_CHECK_GT(   f.m_SlaveStat.map_detailed[sKeyStat].row_done, 0);
             }
             else
             {
@@ -1404,7 +1337,7 @@ namespace // anonymous
             if (kind == slave::eInsert)
             {
                 BOOST_CHECK_EQUAL(f.m_SlaveStat.map_detailed[sKeyStat].done,     1);
-                BOOST_CHECK_GE(   f.m_SlaveStat.map_detailed[sKeyStat].row_done, 0);
+                BOOST_CHECK_GT(   f.m_SlaveStat.map_detailed[sKeyStat].row_done, 0);
             }
             else
             {
@@ -1423,7 +1356,7 @@ namespace // anonymous
             else
             {
                 BOOST_CHECK_EQUAL(f.m_SlaveStat.map_detailed[sKeyTest].done,     1);
-                BOOST_CHECK_GE(   f.m_SlaveStat.map_detailed[sKeyTest].row_done, 0);
+                BOOST_CHECK_GT(   f.m_SlaveStat.map_detailed[sKeyTest].row_done, 0);
             }
 
             BOOST_CHECK_EQUAL(f.m_SlaveStat.map_detailed[sKeyTest].ignored, 0);
@@ -1494,19 +1427,19 @@ namespace // anonymous
                 old_row_empty = false;
                 auto it = rs.m_old_row.find("id");
                 if (it != rs.m_old_row.end())
-                    id_old = slave::get<uint32_t>(it->second.second);
+                    id_old = boost::any_cast<uint32_t>(it->second.second);
 
                 it = rs.m_old_row.find("value");
                 if (it != rs.m_old_row.end())
-                    value_old = slave::get<uint32_t>(it->second.second);
+                    value_old = boost::any_cast<uint32_t>(it->second.second);
             }
             auto it = rs.m_row.find("id");
             if (it != rs.m_row.end())
-                id = slave::get<uint32_t>(it->second.second);
+                id = boost::any_cast<uint32_t>(it->second.second);
 
             it = rs.m_row.find("value");
             if (it != rs.m_row.end())
-                value = slave::get<uint32_t>(it->second.second);
+                value = boost::any_cast<uint32_t>(it->second.second);
         }
 
         void reset()
@@ -1578,14 +1511,6 @@ namespace // anonymous
         f.m_Callback.setCallback();
         if (0 != f.m_Callback.m_UnwantedCalls)
             BOOST_ERROR("Unwanted calls before this case: " << f.m_Callback.m_UnwantedCalls);
-    }
-
-    void test_InsertNullValue()
-    {
-        Fixture f;
-        f.conn->query("DROP TABLE IF EXISTS test");
-        f.conn->query("CREATE TABLE IF NOT EXISTS test (value int)");
-        f.checkInsertValue(nullptr, "NULL", "");
     }
 
     void test_AlterCreateTable()
@@ -1725,7 +1650,6 @@ test_suite* init_unit_test_suite(int argc, char* argv[])
     ADD_FIXTURE_TEST(test_Disconnect);
     ADD_FIXTURE_TEST(test_Stat);
     ADD_FIXTURE_TEST(test_BinlogRowImageOption);
-    ADD_FIXTURE_TEST(test_InsertNullValue);
     ADD_FIXTURE_TEST(test_AlterCreateTable);
     ADD_FIXTURE_TEST(test_GtidParsing);
     ADD_FIXTURE_TEST(test_GtidAdding);

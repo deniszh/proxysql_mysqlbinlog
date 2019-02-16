@@ -17,11 +17,9 @@
 #include <inttypes.h>
 #include <vector>
 #include <stdexcept>
-#include <utility>  // for std::move
 #include <mysql/my_global.h>
 #undef min
 #undef max
-#undef test
 
 #include <mysql/m_string.h>
 
@@ -528,8 +526,9 @@ const char* Field_varstring::unpack(const char* from) {
 
     std::string tmp(from, length_row);
 
+    field_data = tmp;
+
     LOG_TRACE(log, "  varstr: '" << tmp << "' // " << length_bytes << " " << length_row);
-    field_data = std::move(tmp);
 
     return from + length_row;
 }
@@ -554,8 +553,9 @@ const char* Field_blob::unpack(const char* from) {
 
     std::string tmp(from, length_row);
 
+    field_data = tmp;
+
     LOG_TRACE(log, "  blob: '" << tmp << "' // " << packlength << " " << length_row);
-    field_data = std::move(tmp);
 
     return from + length_row;
 }

@@ -1,8 +1,5 @@
 #include <getopt.h>
-
-#include <chrono>
 #include <iostream>
-
 #include "nanomysql.h"
 #include "Slave.h"
 
@@ -46,9 +43,12 @@ void createTable(const nanomysql::mysql_conn_opts& opts, const std::string& aTab
         sQuery += aQueryPart + ",";
     sQuery += aQueryPart;
 
+    timespec start, stop;
+    long long diff;
+
     std::cerr << ::time(NULL) << " Inserting data..." << std::endl;
     time_t sLastOutputTime = 0;
-    auto start = std::chrono::steady_clock::now();
+    clock_gettime(CLOCK_MONOTONIC_RAW, &start);
     for (unsigned i = bulk_count; i > 0; --i)
     {
         const time_t ct = ::time(nullptr);
@@ -59,21 +59,21 @@ void createTable(const nanomysql::mysql_conn_opts& opts, const std::string& aTab
         }
         conn.query(sQuery);
     }
-    auto stop = std::chrono::steady_clock::now();
+    clock_gettime(CLOCK_MONOTONIC_RAW, &stop);
     std::cerr << std::endl;
 
-    auto diff = stop - start;
-    std::cout << "Inserted in " << (std::chrono::duration_cast<std::chrono::milliseconds>(diff).count() / 1e3) << " seconds\n";
+    diff = (stop.tv_sec - start.tv_sec) * 1000000000 + (stop.tv_nsec - start.tv_nsec);
+    std::cout << "Inserted in " << (diff / 1e9) << " seconds\n";
 
     sBinlogPos = sSlave.getLastBinlogPos();
     std::cout << "Master pos after insert is " << sBinlogPos << std::endl;
 
     std::cerr << ::time(NULL) << " Updating data..." << std::endl;
-    start = std::chrono::steady_clock::now();
+    clock_gettime(CLOCK_MONOTONIC_RAW, &start);
     conn.query(aUpdateQuery);
-    stop = std::chrono::steady_clock::now();
-    diff = stop - start;
-    std::cout << "Updated in " << (std::chrono::duration_cast<std::chrono::milliseconds>(diff).count() / 1e3) << " seconds\n";
+    clock_gettime(CLOCK_MONOTONIC_RAW, &stop);
+    diff = (stop.tv_sec - start.tv_sec) * 1000000000 + (stop.tv_nsec - start.tv_nsec);
+    std::cout << "Updated in " << (diff / 1e9) << " seconds\n";
 
     sBinlogPos = sSlave.getLastBinlogPos();
     std::cout << "Master pos after update is " << sBinlogPos << std::endl;
