@@ -95,7 +95,7 @@ public:
         const unsigned int connect_timeout = opts.mysql_connect_timeout;
         const unsigned int read_timeout = opts.mysql_read_timeout;
         const unsigned int write_timeout = opts.mysql_write_timeout;
-        enum mysql_ssl_mode ssl_mode = SSL_MODE_DISABLED;
+        const unsigned int arg_off = mysql_option::SSL_MODE_DISABLED;
         if (connect_timeout > 0)
         {
             mysql_options(connection, MYSQL_OPT_CONNECT_TIMEOUT, &connect_timeout);
@@ -121,7 +121,7 @@ public:
                      , nullptr
                      );
 */
-    mysql_options(connection, MYSQL_OPT_SSL_MODE, &ssl_mode);
+    mysql_options(connection, mysql_option::MYSQL_OPT_SSL_MODE, &arg_off);
     }
     Connection(const mysql_conn_opts& opts)
     {
